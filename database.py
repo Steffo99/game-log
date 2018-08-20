@@ -15,8 +15,7 @@ class User(db.Model):
     def json(self):
         return {
             "id": self.id,
-            "username": self.username,
-            "password": "••••••"
+            "username": self.username
         }
 
     def __repr__(self):
@@ -105,8 +104,8 @@ class Copy(db.Model):
             "id": self.id,
             "owner": self.owner.json(),
             "game": self.game.json(),
-            "progress": self.progress,
-            "rating": self.rating
+            "progress": self.progress.name if self.progress is not None else None,
+            "rating": self.rating.name if self.rating is not None else None
         }
 
     def __repr__(self):

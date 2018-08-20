@@ -203,7 +203,7 @@ def api_v1_copy_rating(user_id):
 
 @app.route("/api/v1/copy/list", methods=["GET"])
 def api_v1_copy_list():
-    f_data = f.request.form
+    f_data = f.request.args
     user_id = f_data.get("user_id")
     if user_id is None:
         return f.jsonify({
@@ -308,6 +308,14 @@ def api_v1_steam_login_successful(response):
     for game in games_data["response"]["games"]:
         db_steamgame = d.session.query(database.SteamGame).filter_by(steam_app_id=game["appid"]).one_or_none()
         if db_steamgame is None:
+            copy = d.session.query(database.Copy) \
+                .filter_by(owner_id=user_id) \
+                .join(database.Game) \
+                .join(database.SteamGame) \
+                .filter_by(steam_app_id=game["appid"]) \
+                .first()
+            if copy is not None:
+                continue
             db_game = d.session.query(database.Game).filter(
                 d.and_(
                     d.func.lower(database.Game.name) == game["name"].lower(),
@@ -326,20 +334,11 @@ def api_v1_steam_login_successful(response):
             play_status = None
         else:
             play_status = database.GameProgress.NOT_STARTED
-        copy = d.session.query(database.Copy) \
-            .filter_by(owner_id=user_id)\
-            .join(database.Game) \
-            .join(database.SteamGame) \
-            .filter_by(steam_app_id=game["appid"]) \
-            .first()
-        if copy is not None:
-            continue
         d.session.flush()
         copy = database.Copy(owner_id=user_id,
                              game_id=db_steamgame.game_id,
                              progress=play_status)
         d.session.add(copy)
-        print(copy)
     d.session.commit()
     return f.redirect("/")
 
