@@ -19,6 +19,9 @@ class User(db.Model):
             "password": "••••••"
         }
 
+    def __repr__(self):
+        return f"<User {self.id} {self.username}>"
+
     def __hash__(self):
         return self.id
 
@@ -26,10 +29,9 @@ class User(db.Model):
 class Game(db.Model):
     __tablename__ = "games"
 
+    id = db.Column(db.BigInteger, primary_key=True)
     name = db.Column(db.String)
     platform = db.Column(db.String)
-
-    __table_args__ = [db.PrimaryKeyConstraint(name, platform)]
 
     def json(self):
         return {
@@ -37,6 +39,9 @@ class Game(db.Model):
             "name": self.name,
             "platform": self.platform
         }
+
+    def __repr__(self):
+        return f"<Game {self.name} on {self.platform}>"
 
     def __hash__(self):
         return hash((self.name, self.platform))
@@ -46,7 +51,7 @@ class SteamGame(db.Model):
     __tablename__ = "steamgames"
 
     game_id = db.Column(db.BigInteger, db.ForeignKey("games.id"))
-    game = db.relationship("games.id", lazy="joined")
+    game = db.relationship("Game", lazy="joined")
 
     steam_app_id = db.Column(db.BigInteger, primary_key=True)
     steam_app_name = db.Column(db.String)
@@ -58,6 +63,9 @@ class SteamGame(db.Model):
             "app_name": self.steam_app_name
         }
         return json
+
+    def __repr__(self):
+        return f"<SteamGame {self.steam_app_name} linked to {self.game_id}>"
 
     def __hash__(self):
         return self.steam_app_id
@@ -85,9 +93,9 @@ class Copy(db.Model):
 
     id = db.Column(db.BigInteger, primary_key=True)
     owner_id = db.Column(db.Integer, db.ForeignKey("users.id"))
-    owner = db.relationship("users.id")
-    game_id = db.Column(db.BigInteger)
-    game = db.relationship("games.id")
+    owner = db.relationship("User")
+    game_id = db.Column(db.BigInteger, db.ForeignKey("games.id"))
+    game = db.relationship("Game")
 
     progress = db.Column(db.Enum(GameProgress))
     rating = db.Column(db.Enum(GameRating))
@@ -100,6 +108,9 @@ class Copy(db.Model):
             "progress": self.progress,
             "rating": self.rating
         }
+
+    def __repr__(self):
+        return f"<Copy of {self.game_id} owned by {self.owner_id}>"
 
     def __hash__(self):
         return self.id

@@ -1,11 +1,19 @@
 import flask as f
-from server.database import db as d
-from server import database
+import flask_openid
+from database import db as d
+import database
 import bcrypt
+import re
+import steam.webapi
+import json
+# noinspection PyUnresolvedReferences
+import configuration
 
 app = f.Flask(__name__)
-app.secret_key = "indev"
+app.config.from_object("configuration.Config")
 d.init_app(app)
+steam_oid = flask_openid.OpenID(app)
+steam_api = steam.WebAPI(app.config["STEAM_API_KEY"])
 
 
 @app.route("/api/v1/user/register", methods=["POST"])
@@ -19,7 +27,7 @@ def api_v1_user_register():
             "reason": "Missing username or password."
         })
     salt = bcrypt.gensalt()
-    bcrypted_password = bcrypt.hashpw(bytes(password), salt)
+    bcrypted_password = bcrypt.hashpw(bytes(password, encoding="utf8"), salt)
     new_user = database.User(username=username,
                              password=bcrypted_password,
                              admin=False)
@@ -48,7 +56,7 @@ def api_v1_user_login():
             "result": "error",
             "reason": "No such user."
         })
-    if not bcrypt.checkpw(bytes(password), db_user.password):
+    if not bcrypt.checkpw(bytes(password, encoding="utf8"), db_user.password):
         return f.jsonify({
             "result": "error",
             "reason": "Invalid password."
@@ -85,8 +93,8 @@ def admin_required(func):
         return func(*args, **kwargs)
 
 
-@app.route("/api/v1/copy/add", methods=["POST"])
 @login_required
+@app.route("/api/v1/copy/add", methods=["POST"])
 def api_v1_copy_add(user_id):
     f_data = f.request.form
     game_id = f_data.get("game_id")
@@ -111,8 +119,8 @@ def api_v1_copy_add(user_id):
     })
 
 
-@app.route("/api/v1/copy/progress", methods=["POST"])
 @login_required
+@app.route("/api/v1/copy/progress", methods=["POST"])
 def api_v1_copy_progress(user_id):
     f_data = f.request.form
     copy_id = f_data.get("copy_id")
@@ -152,8 +160,8 @@ def api_v1_copy_progress(user_id):
     })
 
 
-@app.route("/api/v1/copy/rating", methods=["POST"])
 @login_required
+@app.route("/api/v1/copy/rating", methods=["POST"])
 def api_v1_copy_rating(user_id):
     f_data = f.request.form
     copy_id = f_data.get("copy_id")
@@ -209,8 +217,8 @@ def api_v1_copy_list():
     })
 
 
-@app.route("/api/v1/copy/delete", methods=["POST"])
 @login_required
+@app.route("/api/v1/copy/delete", methods=["POST"])
 def api_v1_copy_delete(user_id):
     f_data = f.request.form
     copy_id = f_data.get("copy_id")
@@ -239,8 +247,8 @@ def api_v1_copy_delete(user_id):
     })
 
 
-@app.route("/api/v1/game/add", methods=["POST"])
 @login_required
+@app.route("/api/v1/game/add", methods=["POST"])
 def api_v1_game_add(user_id):
     f_data = f.request.form
     name = f_data.get("game_name")
@@ -276,3 +284,66 @@ def api_v1_game_add(user_id):
         "description": "Game added.",
         "game": game.json()
     })
+
+
+@app.route("/openid/steam/login")
+@steam_oid.loginhandler
+def api_v1_steam_login():
+    return steam_oid.try_login("http://steamcommunity.com/openid")
+
+
+@steam_oid.after_login
+def api_v1_steam_login_successful(response):
+    user_id = f.session.get("user_id")
+    if user_id is None:
+        return f.jsonify({
+            "result": "error",
+            "reason": "Not logged in."
+        })
+    steam_id = re.match(r"https://steamcommunity.com/openid/id/(.*)", response.identity_url).group(1)
+    games_data = steam_api.IPlayerService.GetOwnedGames_v1(steamid=steam_id,
+                                                           include_appinfo=True,
+                                                           include_played_free_games=True,
+                                                           appids_filter=None)
+    for game in games_data["response"]["games"]:
+        db_steamgame = d.session.query(database.SteamGame).filter_by(steam_app_id=game["appid"]).one_or_none()
+        if db_steamgame is None:
+            db_game = d.session.query(database.Game).filter(
+                d.and_(
+                    d.func.lower(database.Game.name) == game["name"].lower(),
+                    database.Game.platform == "PC"
+                )
+            ).one_or_none()
+            if db_game is None:
+                db_game = database.Game(name=game["name"],
+                                        platform="PC")
+                d.session.add(db_game)
+            db_steamgame = database.SteamGame(game=db_game,
+                                              steam_app_id=game["appid"],
+                                              steam_app_name=game["name"])
+            d.session.add(db_steamgame)
+        if game["playtime_forever"] > 0:
+            play_status = None
+        else:
+            play_status = database.GameProgress.NOT_STARTED
+        copy = d.session.query(database.Copy) \
+            .filter_by(owner_id=user_id)\
+            .join(database.Game) \
+            .join(database.SteamGame) \
+            .filter_by(steam_app_id=game["appid"]) \
+            .first()
+        if copy is not None:
+            continue
+        d.session.flush()
+        copy = database.Copy(owner_id=user_id,
+                             game_id=db_steamgame.game_id,
+                             progress=play_status)
+        d.session.add(copy)
+        print(copy)
+    d.session.commit()
+    return f.redirect("/")
+
+
+if __name__ == "__main__":
+    d.create_all(app=app)
+    app.run()

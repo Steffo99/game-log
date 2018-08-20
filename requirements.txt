@@ -1,0 +1,3 @@
+flask
+steam
+bcrypt
