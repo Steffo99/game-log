@@ -2,6 +2,7 @@ import flask as f
 from database import db as d
 import database
 import bcrypt
+import steam
 
 app = f.Flask(__name__)
 app.secret_key = "indev"
@@ -193,6 +194,22 @@ def api_v1_copy_rating(user_id):
     })
 
 
+@app.route("/api/v1/copy/list", methods=["GET"])
+def api_v1_copy_list():
+    f_data = f.request.form
+    user_id = f_data.get("user_id")
+    if user_id is None:
+        return f.jsonify({
+            "result": "error",
+            "reason": "Missing user_id."
+        })
+    copies = d.session.query(database.Copy).filter_by(owner_id=user_id).all()
+    return f.jsonify({
+        "result": "success",
+        "copies": [copy.json() for copy in copies]
+    })
+
+
 @app.route("/api/v1/copy/delete", methods=["POST"])
 @login_required
 def api_v1_copy_delete(user_id):
@@ -220,4 +237,43 @@ def api_v1_copy_delete(user_id):
         "result": "success",
         "description": "Copy deleted.",
         "copy": copy.json()
+    })
+
+
+@app.route("/api/v1/game/add", methods=["POST"])
+@login_required
+def api_v1_game_add(user_id):
+    f_data = f.request.form
+    name = f_data.get("game_name")
+    platform = f_data.get("game_platform")
+    if name is None:
+        return f.jsonify({
+            "result": "error",
+            "reason": "Missing game_name."
+        })
+    if platform is None:
+        return f.jsonify({
+            "result": "error",
+            "reason": "Missing game_platform."
+        })
+    game = d.session.query(database.Game).filter(
+        d.and_(
+            d.func.lower(database.Game.name) == name.lower(),
+            d.func.lower(database.Game.platform) == platform.lower()
+        )
+    ).one_or_none()
+    if game is not None:
+        return f.jsonify({
+            "result": "error",
+            "reason": "Game already exists.",
+            "game": game.json()
+        })
+    game = database.Game(name=name,
+                         platform=platform)
+    d.session.add(game)
+    d.session.commit()
+    return f.jsonify({
+        "result": "success",
+        "description": "Game added.",
+        "game": game.json()
     })

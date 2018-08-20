@@ -23,9 +23,10 @@ class User(db.Model):
 class Game(db.Model):
     __tablename__ = "games"
 
-    id = db.Column(db.BigInteger, primary_key=True)
     name = db.Column(db.String)
     platform = db.Column(db.String)
+
+    __table_args__ = [db.PrimaryKeyConstraint(name, platform)]
 
     def json(self):
         return {
