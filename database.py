@@ -19,6 +19,9 @@ class User(db.Model):
             "password": "••••••"
         }
 
+    def __hash__(self):
+        return self.id
+
 
 class Game(db.Model):
     __tablename__ = "games"
@@ -34,6 +37,9 @@ class Game(db.Model):
             "name": self.name,
             "platform": self.platform
         }
+
+    def __hash__(self):
+        return hash((self.name, self.platform))
 
 
 class SteamGame(db.Model):
@@ -52,6 +58,9 @@ class SteamGame(db.Model):
             "app_name": self.steam_app_name
         }
         return json
+
+    def __hash__(self):
+        return self.steam_app_id
 
 
 class GameProgress(enum.Enum):
@@ -91,3 +100,6 @@ class Copy(db.Model):
             "progress": self.progress,
             "rating": self.rating
         }
+
+    def __hash__(self):
+        return self.id
