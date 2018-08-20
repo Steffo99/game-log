@@ -1,8 +1,7 @@
 import flask as f
-from database import db as d
-import database
+from server.database import db as d
+from server import database
 import bcrypt
-import steam
 
 app = f.Flask(__name__)
 app.secret_key = "indev"
