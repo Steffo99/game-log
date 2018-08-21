@@ -16,6 +16,12 @@ steam_oid = flask_openid.OpenID(app)
 steam_api = steam.WebAPI(app.config["STEAM_API_KEY"])
 
 
+@app.after_request
+def after_every_request(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    return response
+
+
 @app.route("/api/v1/user/register", methods=["POST"])
 def api_v1_user_register():
     f_data = f.request.form
