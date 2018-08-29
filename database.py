@@ -1,5 +1,6 @@
 import flask_sqlalchemy
 import enum
+import secrets
 
 db = flask_sqlalchemy.SQLAlchemy()
 
@@ -23,6 +24,20 @@ class User(db.Model):
 
     def __hash__(self):
         return self.id
+
+
+class Token(db.Model):
+    __tablename__ = "tokens"
+
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    user = db.relationship("User", lazy="joined")
+    token = db.Column(db.String, primary_key=True)
+
+    @staticmethod
+    def new(user: User):
+        token = secrets.token_urlsafe(64)
+        return Token(user=user,
+                     token=token)
 
 
 class Game(db.Model):

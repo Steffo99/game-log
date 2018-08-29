@@ -5,7 +5,6 @@ import database
 import bcrypt
 import re
 import steam.webapi
-import json
 # noinspection PyUnresolvedReferences
 import configuration
 
@@ -46,8 +45,8 @@ def api_v1_user_register():
     })
 
 
-@app.route("/api/v1/user/login", methods=["POST"])
-def api_v1_user_login():
+@app.route("/api/v1/user/token", methods=["POST"])
+def api_v1_user_token():
     f_data = f.request.form
     username = f_data.get("username")
     password = f_data.get("password")
@@ -67,9 +66,9 @@ def api_v1_user_login():
             "result": "error",
             "reason": "Invalid password."
         })
-    f.session["username"] = db_user.username
-    f.session["user_id"] = db_user.id
-    f.session["admin"] = db_user.admin
+    token = d.Token.new(user=db_user)
+    d.session.add(token)
+    d.session.commit()
     return f.jsonify({
         "result": "success",
         "description": "Logged in.",
@@ -79,26 +78,20 @@ def api_v1_user_login():
 
 def login_required(func):
     def new_func(*args, **kwargs):
-        f_data = f.request.form
-        username = f_data.get("username")
-        password = f_data.get("password")
-        if username is None or password is None:
+        token = f.request.form.get("token")
+        if token is None:
             return f.jsonify({
                 "result": "error",
-                "reason": "Missing username or password."
+                "reason": "No token specified."
             })
-        db_user = d.session.query(database.User).filter_by(username=username).one_or_none()
-        if db_user is None:
+        login = d.session.query(d.Token).filter_by(token=token).one_or_none()
+        if login is None:
             return f.jsonify({
                 "result": "error",
-                "reason": "No such user."
+                "reason": "Invalid token."
             })
-        if not bcrypt.checkpw(bytes(password, encoding="utf8"), db_user.password):
-            return f.jsonify({
-                "result": "error",
-                "reason": "Invalid password."
-            })
-        return func(user=db_user, *args, **kwargs)
+        return func(user=login.user, *args, **kwargs)
+    return new_func
 
 
 def admin_required(func):
@@ -128,7 +121,7 @@ def api_v1_copy_add(user):
             "result": "error",
             "reason": "No such game."
         })
-    new_copy = database.Copy(owner=user)
+    new_copy = database.Copy(owner_id=user.id)
     d.session.add(new_copy)
     d.session.commit()
     return f.jsonify({
@@ -154,7 +147,7 @@ def api_v1_copy_progress(user):
             "result": "error",
             "reason": "No such copy."
         })
-    if copy.owner != user:
+    if copy.owner_id != user.id:
         return f.jsonify({
             "result": "error",
             "reason": "You don't own this copy."
@@ -195,7 +188,7 @@ def api_v1_copy_rating(user):
             "result": "error",
             "reason": "No such copy."
         })
-    if copy.owner != user:
+    if copy.owner_id != user.id:
         return f.jsonify({
             "result": "error",
             "reason": "You don't own this copy."
@@ -223,13 +216,13 @@ def api_v1_copy_rating(user):
 @app.route("/api/v1/copy/list", methods=["GET"])
 def api_v1_copy_list():
     f_data = f.request.args
-    user = f_data.get("user")
-    if user is None:
+    user_id = f_data.get("user_id")
+    if user_id is None:
         return f.jsonify({
             "result": "error",
-            "reason": "Missing user."
+            "reason": "Missing user.id."
         })
-    copies = d.session.query(database.Copy).filter_by(owner=user).all()
+    copies = d.session.query(database.Copy).filter_by(owner_id=user_id).all()
     return f.jsonify({
         "result": "success",
         "copies": [copy.json() for copy in copies]
@@ -252,7 +245,7 @@ def api_v1_copy_delete(user):
             "result": "error",
             "reason": "No such copy."
         })
-    if copy.owner != user:
+    if copy.owner_id != user.id:
         return f.jsonify({
             "result": "error",
             "reason": "You don't own this copy."
@@ -307,14 +300,16 @@ def api_v1_game_add(user):
 
 @app.route("/openid/steam/login")
 @steam_oid.loginhandler
-def api_v1_steam_login():
+@login_required
+def api_v1_steam_login(user):
+    f.session["user"] = user.json()
     return steam_oid.try_login("http://steamcommunity.com/openid")
 
 
 @steam_oid.after_login
 def api_v1_steam_login_successful(response):
     user = f.session.get("user")
-    if user is None:
+    if user["id"] is None:
         return f.jsonify({
             "result": "error",
             "reason": "Not logged in."
@@ -328,7 +323,7 @@ def api_v1_steam_login_successful(response):
         db_steamgame = d.session.query(database.SteamGame).filter_by(steam_app_id=game["appid"]).one_or_none()
         if db_steamgame is None:
             copy = d.session.query(database.Copy) \
-                .filter_by(owner=user) \
+                .filter_by(owner_id=user.id) \
                 .join(database.Game) \
                 .join(database.SteamGame) \
                 .filter_by(steam_app_id=game["appid"]) \
@@ -354,7 +349,7 @@ def api_v1_steam_login_successful(response):
         else:
             play_status = database.GameProgress.NOT_STARTED
         d.session.flush()
-        copy = database.Copy(owner=user,
+        copy = database.Copy(owner_id=user.id,
                              game_id=db_steamgame.game_id,
                              progress=play_status)
         d.session.add(copy)
