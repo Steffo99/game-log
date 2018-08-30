@@ -31,6 +31,12 @@ def api_v1_user_register():
             "result": "error",
             "reason": "Missing username or password."
         })
+    user = d.session.query(database.User).filter_by(username=username).one_or_none()
+    if user is not None:
+        return f.jsonify({
+            "result": "error",
+            "reason": "Username already in use."
+        })
     salt = bcrypt.gensalt()
     bcrypted_password = bcrypt.hashpw(bytes(password, encoding="utf8"), salt)
     new_user = database.User(username=username,
@@ -66,13 +72,14 @@ def api_v1_user_token():
             "result": "error",
             "reason": "Invalid password."
         })
-    token = d.Token.new(user=db_user)
+    token = database.Token.new(user=db_user)
     d.session.add(token)
     d.session.commit()
     return f.jsonify({
         "result": "success",
         "description": "Logged in.",
-        "user": db_user.json()
+        "user": db_user.json(),
+        "token": token.token
     })
 
 
@@ -92,17 +99,6 @@ def login_required(func):
             })
         return func(user=login.user, *args, **kwargs)
     return new_func
-
-
-def admin_required(func):
-    def new_func(*args, **kwargs):
-        admin = f.session.get("admin")
-        if not admin:
-            return f.jsonify({
-                "result": "error",
-                "reason": "Insufficient permissions."
-            })
-        return func(*args, **kwargs)
 
 
 @login_required
