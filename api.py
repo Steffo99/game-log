@@ -5,6 +5,7 @@ import database
 import bcrypt
 import re
 import steam.webapi
+import functools
 # noinspection PyUnresolvedReferences
 import configuration
 
@@ -84,6 +85,7 @@ def api_v1_user_token():
 
 
 def login_required(func):
+    @functools.wraps(func)
     def new_func(*args, **kwargs):
         token = f.request.form.get("token")
         if token is None:
@@ -91,7 +93,7 @@ def login_required(func):
                 "result": "error",
                 "reason": "No token specified."
             })
-        login = d.session.query(d.Token).filter_by(token=token).one_or_none()
+        login = d.session.query(database.Token).filter_by(token=token).one_or_none()
         if login is None:
             return f.jsonify({
                 "result": "error",
@@ -101,8 +103,8 @@ def login_required(func):
     return new_func
 
 
-@login_required
 @app.route("/api/v1/copy/add", methods=["POST"])
+@login_required
 def api_v1_copy_add(user):
     f_data = f.request.form
     game_id = f_data.get("game_id")
@@ -127,8 +129,8 @@ def api_v1_copy_add(user):
     })
 
 
-@login_required
 @app.route("/api/v1/copy/progress", methods=["POST"])
+@login_required
 def api_v1_copy_progress(user):
     f_data = f.request.form
     copy_id = f_data.get("copy_id")
@@ -168,8 +170,8 @@ def api_v1_copy_progress(user):
     })
 
 
-@login_required
 @app.route("/api/v1/copy/rating", methods=["POST"])
+@login_required
 def api_v1_copy_rating(user):
     f_data = f.request.form
     copy_id = f_data.get("copy_id")
@@ -218,15 +220,15 @@ def api_v1_copy_list():
             "result": "error",
             "reason": "Missing user.id."
         })
-    copies = d.session.query(database.Copy).filter_by(owner_id=user_id).all()
+    copies = d.session.query(database.Copy).filter_by(owner_id=user_id).order_by(database.Copy.rating.desc().nullslast()).all()
     return f.jsonify({
         "result": "success",
         "copies": [copy.json() for copy in copies]
     })
 
 
-@login_required
 @app.route("/api/v1/copy/delete", methods=["POST"])
+@login_required
 def api_v1_copy_delete(user):
     f_data = f.request.form
     copy_id = f_data.get("copy_id")
@@ -255,8 +257,8 @@ def api_v1_copy_delete(user):
     })
 
 
-@login_required
 @app.route("/api/v1/game/add", methods=["POST"])
+@login_required
 def api_v1_game_add(user):
     f_data = f.request.form
     name = f_data.get("game_name")
