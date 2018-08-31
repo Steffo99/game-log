@@ -296,11 +296,23 @@ def api_v1_game_add(user):
     })
 
 
-@app.route("/openid/steam/login")
+@app.route("/openid/steam/login", methods=["GET"])
 @steam_oid.loginhandler
-@login_required
-def api_v1_steam_login(user):
-    f.session["user"] = user.json()
+def api_v1_steam_login():
+    token = f.request.args.get("token")
+    if token is None:
+        return f.jsonify({
+            "result": "error",
+            "reason": "No token specified."
+        })
+    login = d.session.query(database.Token).filter_by(token=token).one_or_none()
+    if login is None:
+        return f.jsonify({
+            "result": "error",
+            "reason": "Invalid token."
+        })
+    f.session["user"] = login.user.json()
+    f.session["openid_redirect_to"] = f.request.args.get("redirect_to")
     return steam_oid.try_login("http://steamcommunity.com/openid")
 
 
@@ -317,11 +329,13 @@ def api_v1_steam_login_successful(response):
                                                            include_appinfo=True,
                                                            include_played_free_games=True,
                                                            appids_filter=None)
+    # TODO: improve performance here
     for game in games_data["response"]["games"]:
+        print(game["name"]) 
         db_steamgame = d.session.query(database.SteamGame).filter_by(steam_app_id=game["appid"]).one_or_none()
         if db_steamgame is None:
             copy = d.session.query(database.Copy) \
-                .filter_by(owner_id=user.id) \
+                .filter_by(owner_id=user["id"]) \
                 .join(database.Game) \
                 .join(database.SteamGame) \
                 .filter_by(steam_app_id=game["appid"]) \
@@ -331,12 +345,12 @@ def api_v1_steam_login_successful(response):
             db_game = d.session.query(database.Game).filter(
                 d.and_(
                     d.func.lower(database.Game.name) == game["name"].lower(),
-                    database.Game.platform == "PC"
+                    database.Game.platform == "Steam"
                 )
             ).one_or_none()
             if db_game is None:
                 db_game = database.Game(name=game["name"],
-                                        platform="PC")
+                                        platform="Steam")
                 d.session.add(db_game)
             db_steamgame = database.SteamGame(game=db_game,
                                               steam_app_id=game["appid"],
@@ -347,12 +361,12 @@ def api_v1_steam_login_successful(response):
         else:
             play_status = database.GameProgress.NOT_STARTED
         d.session.flush()
-        copy = database.Copy(owner_id=user.id,
+        copy = database.Copy(owner_id=user["id"],
                              game_id=db_steamgame.game_id,
                              progress=play_status)
         d.session.add(copy)
     d.session.commit()
-    return f.redirect("/")
+    return f.redirect(f.session.get("openid_redirect_to"))
 
 
 if __name__ == "__main__":
