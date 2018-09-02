@@ -298,7 +298,7 @@ def api_v1_game_add(user):
 
 @app.route("/openid/steam/login", methods=["GET"])
 @steam_oid.loginhandler
-def api_v1_steam_login():
+def openid_steam_login():
     token = f.request.args.get("token")
     if token is None:
         return f.jsonify({
@@ -317,31 +317,39 @@ def api_v1_steam_login():
 
 
 @steam_oid.after_login
-def api_v1_steam_login_successful(response):
+def openid_steam_login_wait(response):
     user = f.session.get("user")
     if user["id"] is None:
         return f.jsonify({
             "result": "error",
             "reason": "Not logged in."
         })
-    steam_id = re.match(r"https://steamcommunity.com/openid/id/(.*)", response.identity_url).group(1)
+    f.session["steam_id"] = re.match(r"https://steamcommunity.com/openid/id/(.*)", response.identity_url).group(1)
+    return f.render_template("wait.html")
+
+
+@app.route("/openid/steam/successful")
+def openid_steam_login_successful():
+    user = f.session.get("user")
+    steam_id = f.session.get("steam_id")
+    if user is None:
+        return f.jsonify({
+            "result": "error",
+            "reason": "Not logged in."
+        })
+    if steam_id is None:
+        return f.jsonify({
+            "result": "error",
+            "reason": "No steam login."
+        })
     games_data = steam_api.IPlayerService.GetOwnedGames_v1(steamid=steam_id,
                                                            include_appinfo=True,
                                                            include_played_free_games=True,
                                                            appids_filter=None)
     # TODO: improve performance here
     for game in games_data["response"]["games"]:
-        print(game["name"]) 
         db_steamgame = d.session.query(database.SteamGame).filter_by(steam_app_id=game["appid"]).one_or_none()
         if db_steamgame is None:
-            copy = d.session.query(database.Copy) \
-                .filter_by(owner_id=user["id"]) \
-                .join(database.Game) \
-                .join(database.SteamGame) \
-                .filter_by(steam_app_id=game["appid"]) \
-                .first()
-            if copy is not None:
-                continue
             db_game = d.session.query(database.Game).filter(
                 d.and_(
                     d.func.lower(database.Game.name) == game["name"].lower(),
@@ -356,6 +364,15 @@ def api_v1_steam_login_successful(response):
                                               steam_app_id=game["appid"],
                                               steam_app_name=game["name"])
             d.session.add(db_steamgame)
+        copy = d.session.query(database.SteamGame) \
+            .filter_by(steam_app_id=game["appid"]) \
+            .join(database.Game) \
+            .join(database.Copy) \
+            .filter_by(owner_id=user["id"]) \
+            .first()
+        if copy is not None:
+            continue
+        print(game["name"])
         if game["playtime_forever"] > 0:
             play_status = None
         else:
