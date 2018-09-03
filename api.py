@@ -98,7 +98,7 @@ def api_v1_user_search():
             })
         return f.jsonify({
             "result": "success",
-            "description": "Retrieved user successfully."
+            "description": "Retrieved user successfully.",
             "user": db_user.json()
         })
     elif username:
