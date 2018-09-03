@@ -95,7 +95,6 @@ class GameProgress(enum.Enum):
 
 
 class GameRating(enum.Enum):
-    UNRATED = 0
     DISLIKED = 1
     MIXED = 2
     LIKED = 3

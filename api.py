@@ -84,6 +84,41 @@ def api_v1_user_token():
     })
 
 
+@app.route("/api/v1/user/search", methods=["GET"])
+def api_v1_user_search():
+    f_data = f.request.args
+    user_id = f_data.get("user_id")
+    username = f_data.get("username")
+    if user_id:
+        user = d.session.query(database.User).filter_by(user_id=user_id).one_or_none()
+        if user is None:
+            return f.jsonify({
+                "result": "error",
+                "reason": "No such user."
+            })
+        return f.jsonify({
+            "result": "success",
+            "description": "Retrieved user successfully."
+            "user": db_user.json()
+        })
+    elif username:
+        user = d.session.query(database.User).filter_by(username=username).one_or_none()
+        if user is None:
+            return f.jsonify({
+                "result": "error",
+                "reason": "No such user."
+            })
+        return f.jsonify({
+            "result": "success",
+            "description": "Retrieved user successfully."
+            "user": db_user.json()
+        })
+    return f.jsonify({
+        "result": "error",
+        "reason": "Missing user_id or username."
+    })
+
+
 def login_required(func):
     @functools.wraps(func)
     def new_func(*args, **kwargs):
@@ -151,17 +186,15 @@ def api_v1_copy_progress(user):
             "reason": "You don't own this copy."
         })
     progress = f_data.get("progress")
-    if progress is None:
-        return f.jsonify({
-            "result": "error",
-            "reason": "Missing progress."
-        })
-    if progress not in database.GameProgress.__members__:
+    if progress == "null":
+        copy.progress = None
+    elif progress not in database.GameProgress.__members__:
         return f.jsonify({
             "result": "error",
             "reason": "Invalid progress."
         })
-    copy.progress = database.GameProgress[progress]
+    else:
+        copy.progress = database.GameProgress[progress]
     d.session.commit()
     return f.jsonify({
         "result": "success",
@@ -192,17 +225,15 @@ def api_v1_copy_rating(user):
             "reason": "You don't own this copy."
         })
     rating = f_data.get("rating")
-    if rating is None:
+    if rating == "null":
+        copy.rating = None
+    elif rating not in database.GameRating.__members__:
         return f.jsonify({
             "result": "error",
-            "reason": "Missing progress."
+            "reason": "Invalid rating."
         })
-    if rating not in database.GameRating.__members__:
-        return f.jsonify({
-            "result": "error",
-            "reason": "Invalid progress."
-        })
-    copy.rating = database.GameRating[rating]
+    else:
+        copy.rating = database.GameRating[rating]
     d.session.commit()
     return f.jsonify({
         "result": "success",
@@ -218,7 +249,7 @@ def api_v1_copy_list():
     if user_id is None:
         return f.jsonify({
             "result": "error",
-            "reason": "Missing user.id."
+            "reason": "Missing user_id."
         })
     copies = d.session.query(database.Copy).filter_by(owner_id=user_id).order_by(database.Copy.rating.desc().nullslast()).all()
     return f.jsonify({

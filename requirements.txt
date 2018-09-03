@@ -1,3 +1,5 @@
 flask
 steam
 bcrypt
+flask_openid
+flask_sqlalchemy
