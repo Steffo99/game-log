@@ -99,7 +99,7 @@ def api_v1_user_search():
         return f.jsonify({
             "result": "success",
             "description": "Retrieved user successfully.",
-            "user": db_user.json()
+            "user": user.json()
         })
     elif username:
         user = d.session.query(database.User).filter_by(username=username).one_or_none()
@@ -111,7 +111,7 @@ def api_v1_user_search():
         return f.jsonify({
             "result": "success",
             "description": "Retrieved user successfully.",
-            "user": db_user.json()
+            "user": user.json()
         })
     return f.jsonify({
         "result": "error",
