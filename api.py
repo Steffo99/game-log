@@ -251,7 +251,7 @@ def api_v1_copy_list():
             "result": "error",
             "reason": "Missing user_id."
         })
-    copies = d.session.query(database.Copy).filter_by(owner_id=user_id).order_by(database.Copy.rating.desc().nullslast()).all()
+    copies = d.session.query(database.Copy).filter_by(owner_id=user_id).join(database.Game).order_by(database.Copy.rating.desc().nullslast(), database.Game.name).all()
     return f.jsonify({
         "result": "success",
         "copies": [copy.json() for copy in copies]
